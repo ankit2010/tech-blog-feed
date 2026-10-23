@@ -48,6 +48,18 @@ export default function PostCard({ post }: { post: Post }) {
           {post.summary}
         </p>
       )}
+      {post.topics.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {post.topics.map((topic) => (
+            <span
+              key={topic}
+              className="rounded border border-zinc-200 px-1.5 py-0.5 text-[11px] text-zinc-500 dark:border-zinc-800 dark:text-zinc-400"
+            >
+              {topic}
+            </span>
+          ))}
+        </div>
+      )}
     </a>
   );
 }
