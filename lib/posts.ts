@@ -1,6 +1,7 @@
 import Parser from "rss-parser";
 import * as cheerio from "cheerio";
 import { SOURCES, type Source, type SourceId } from "./sources";
+import { extractTopics } from "./topics";
 
 export type Post = {
   id: string;
@@ -9,6 +10,7 @@ export type Post = {
   sourceId: SourceId;
   publishedAt: string | null;
   summary: string | null;
+  topics: string[];
 };
 
 const rssParser = new Parser({ timeout: 10_000 });
@@ -22,14 +24,19 @@ async function fetchRssPosts(source: Source): Promise<Post[]> {
   return (feed.items ?? [])
     .slice(0, POSTS_PER_SOURCE)
     .filter((item) => item.link && item.title)
-    .map((item) => ({
-      id: `${source.id}:${item.link}`,
-      title: item.title!.trim(),
-      url: item.link!,
-      sourceId: source.id,
-      publishedAt: item.isoDate ?? item.pubDate ?? null,
-      summary: item.contentSnippet?.trim().slice(0, 240) ?? null,
-    }));
+    .map((item) => {
+      const title = item.title!.trim();
+      const summary = item.contentSnippet?.trim().slice(0, 240) ?? null;
+      return {
+        id: `${source.id}:${item.link}`,
+        title,
+        url: item.link!,
+        sourceId: source.id,
+        publishedAt: item.isoDate ?? item.pubDate ?? null,
+        summary,
+        topics: extractTopics(`${title} ${summary ?? ""}`, item.categories ?? []),
+      };
+    });
 }
 
 async function fetchAnthropicPosts(source: Source): Promise<Post[]> {
@@ -60,10 +67,15 @@ async function fetchAnthropicPosts(source: Source): Promise<Post[]> {
     if (!title) return;
 
     const summary = anchor.find("p").first().text().trim().replace(/\s+/g, " ") || null;
-    const timeText = anchor.closest("article").find("time").first().text().trim();
+    const article = anchor.closest("article");
+    const timeText = article.find("time").first().text().trim();
     const parsedDate = timeText ? new Date(timeText) : null;
     const publishedAt =
       parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate.toISOString() : null;
+
+    // The category tag lives in the same article's header, e.g.
+    // <header><p><a href="/news/announcements">Announcements</a></p>...
+    const categoryText = article.find('header a[href^="/news/"]').first().text().trim();
 
     seen.add(url);
     posts.push({
@@ -73,6 +85,7 @@ async function fetchAnthropicPosts(source: Source): Promise<Post[]> {
       sourceId: source.id,
       publishedAt,
       summary,
+      topics: extractTopics(`${title} ${summary ?? ""}`, categoryText ? [categoryText] : []),
     });
   });
 
